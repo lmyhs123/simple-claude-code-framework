@@ -1,2 +1,0 @@
-"""Assistant prompt definitions."""
-

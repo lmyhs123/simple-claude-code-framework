@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Local database and uploads
+backend/data/*.db
+backend/uploads/*
+!backend/uploads/.gitkeep
+!backend/data/.gitkeep
+
+# Environment
+.env
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+

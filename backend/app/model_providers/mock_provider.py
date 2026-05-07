@@ -1,3 +1,4 @@
+from app.model_providers.base import ModelResponse
 from app.skills.registry import Skill
 
 
@@ -11,14 +12,16 @@ class MockModelProvider:
         *,
         messages: list[dict[str, str]],
         skill: Skill,
-    ) -> str:
+    ) -> ModelResponse:
         system_message = messages[0]["content"] if messages else ""
         user_message = messages[-1]["content"] if messages else ""
         history_count = max(0, len(messages) - 2)
-        return (
-            f"【{skill.name}】Gateway 已收到并组织好本次请求。\n\n"
-            "当前仍然是 mock 模型回复，用来先跑通 Claude-like 平台主链路。\n\n"
-            f"模型将收到的 system message：\n{system_message}\n\n"
-            f"模型将收到的当前 user message：\n{user_message}\n\n"
-            f"本次上下文包含 {history_count} 条历史消息。"
+        text = (
+            f"[{skill.name}] Agent loop has received this request.\n\n"
+            "This is still a mock model reply, used to verify the Claude "
+            "Code-like main flow before we connect a real model API.\n\n"
+            f"System message received by the model:\n{system_message}\n\n"
+            f"Current user message received by the model:\n{user_message}\n\n"
+            f"This turn includes {history_count} historical messages."
         )
+        return ModelResponse(text=text)

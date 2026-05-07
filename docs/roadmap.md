@@ -16,6 +16,8 @@ memory 包占位
 model_providers 包和 mock provider
 artifacts 包占位
 audit 包占位
+agent loop 包骨架
+tools 包骨架
 SQLite storage
 ```
 

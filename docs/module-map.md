@@ -54,6 +54,36 @@ api/chat.py
 -> model_providers/mock_provider.py
 ```
 
+## agent
+
+职责：承接教程里的 Agent Loop 概念，后续扩展为：
+模型返回工具调用 -> 执行工具 -> 回填结果 -> 重试直到完成。
+
+当前文件：
+
+```text
+backend/app/agent/loop.py
+```
+
+## tools
+
+职责：承接教程里的 6 个核心工具系统。
+
+当前文件：
+
+```text
+backend/app/tools/base.py
+backend/app/tools/registry.py
+backend/app/tools/builtin_tools.py
+backend/app/tools/executor.py
+```
+
+当前状态：
+
+- 已有 6 个工具的框架位置
+- 只有 `read_file` 做了最小实现
+- 其余工具先保留占位，方便后续按教程逐步完成
+
 ## project
 
 职责：Claude Code-like Project / Workspace。

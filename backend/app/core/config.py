@@ -22,10 +22,13 @@ class Settings(BaseSettings):
     app_name: str = "Simple Claude Code Framework"
     database_url: str = "sqlite:///./data/app.db"
     upload_dir: str = "./uploads"
+    workspace_root: str = ".."
     model_provider: str = "mock"
     model_api_key: str = ""
     model_base_url: str = ""
     model_name: str = ""
+    max_agent_steps: int = 5
+    max_tool_file_size: int = 1_000_000
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -33,6 +36,10 @@ class Settings(BaseSettings):
     @property
     def upload_path(self) -> Path:
         return Path(self.upload_dir)
+
+    @property
+    def workspace_path(self) -> Path:
+        return Path(self.workspace_root).resolve()
 #@property 装饰器: 它的作用是把一个“函数/方法”伪装成一个“属性”。
 #为什么要这么做？: self.upload_dir 只是一个普通的字符串（"./uploads"）。但是通过这个方法，我们将它转换成了 Path 对象。
 #因为加了 @property，你在其他地方使用时不需要加括号（直接写 settings.upload_path 即可，不用写 settings.upload_path()），

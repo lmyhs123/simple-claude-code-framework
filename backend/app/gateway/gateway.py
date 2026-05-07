@@ -7,7 +7,7 @@ from app.model_providers.provider_factory import get_model_provider
 from app.models.session import ChatSession
 from app.repositories import message_repository, project_repository
 from app.skills.registry import Skill
-from app.tools.builtin_tools import build_builtin_tools
+from app.tools.builtin_tools import build_builtin_tool_factories
 from app.tools.registry import ToolRegistry
 
 # 这个文件是“总调度层”。
@@ -65,8 +65,8 @@ def run_gateway_turn(
     # 注册本轮可用工具。
     # 现在只是骨架，但已经和教程第一章的方向对齐了。
     tool_registry = ToolRegistry()
-    for tool in build_builtin_tools():
-        tool_registry.register(tool)
+    for definition, factory in build_builtin_tool_factories():
+        tool_registry.register_deferred(definition, factory)
 
     # gateway 不直接生成最终答案，而是把 provider 和 messages 交给 loop。
     provider = get_model_provider()

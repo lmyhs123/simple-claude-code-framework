@@ -1,4 +1,5 @@
 from app.models.project import Project
+from app.prompts.system_prompt import build_system_prompt
 from app.skills.registry import Skill
 
 
@@ -15,25 +16,8 @@ def build_messages(
     This is the simplified Claude Code-like context layer:
     project instruction + skill prompt + history + knowledge + current input.
     """
-    system_parts = [
-        "你是 Simple Claude Code Framework 的通用 AI agent。",
-        "你需要根据当前项目、会话历史、知识库片段和用户任务给出清晰、可执行的回答。",
-        f"当前 skill：{skill.name}",
-        skill.system_prompt,
-    ]
-
-    if project is not None:
-        system_parts.extend(
-            [
-                "",
-                f"当前项目：{project.name}",
-                f"项目说明：{project.description or '无'}",
-                f"项目自定义指令：{project.system_instruction or '无'}",
-            ]
-        )
-
     messages: list[dict[str, str]] = [
-        {"role": "system", "content": "\n".join(system_parts)}
+        {"role": "system", "content": build_system_prompt(skill=skill, project=project)}
     ]
 
     messages.extend(history)

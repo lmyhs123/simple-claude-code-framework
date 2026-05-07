@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from app.core.config import settings
 from app.model_providers.base import ModelProvider, ModelResponse
 from app.skills.registry import Skill
 from app.tools.base import ToolResult
@@ -10,7 +11,10 @@ from app.tools.registry import ToolRegistry
 # 你可以把它理解成一个最小版执行引擎：
 # - 接收已经准备好的 messages
 # - 调用模型
-# - 后续再逐步扩展成“模型请求工具 -> 执行工具 -> 再回到模型”的循环
+# - 判断模型是否请求工具
+# - 执行工具
+# - 把工具结果追加回 messages
+# - 最多重复若干次，直到模型给出最终回答
 
 
 @dataclass
@@ -20,6 +24,7 @@ class AgentLoopResult:
     final_text: str
     tool_results: list[ToolResult]
 
+
 # 这里不要只返回一个字符串。
 # Agent 系统除了最终回答，还要保留“过程结果”：
 # - 调用了哪些工具
@@ -28,21 +33,21 @@ class AgentLoopResult:
 
 
 class AgentLoop:
-    """A simplified tutorial-aligned agent loop.
+    """A simplified tutorial-aligned bounded agent loop.
 
     Current behavior:
     - accepts prepared model messages
-    - calls the model provider once
-    - returns a structured result object
-
-    Later we will extend this into:
-    LLM -> tool call -> execute -> append result -> repeat
+    - calls the model provider
+    - executes requested tool calls
+    - appends tool results to messages
+    - repeats up to settings.max_agent_steps
     """
 
     def __init__(self, tool_registry: ToolRegistry) -> None:
         # loop 不自己写死工具列表，而是依赖外部传入 registry。
         # 这样以后新增工具时，不需要修改 loop 的主结构。
         self.tool_registry = tool_registry
+
         # registry 负责“有哪些工具”，executor 负责“怎么执行工具”。
         self.tool_executor = ToolExecutor(tool_registry)
 
@@ -51,42 +56,83 @@ class AgentLoop:
         *,
         messages: list[dict[str, str]],
         provider: ModelProvider,
-        skill: Skill,  
+        skill: Skill,
     ) -> AgentLoopResult:
-        '''
-        messages
-        这是已经准备好的上下文，不是 loop 自己去查数据库。
+        """Run one bounded agent turn."""
+        # messages:
+        # 这是已经准备好的上下文，不是 loop 自己去查数据库。
+        #
+        # provider:
+        # loop 不关心具体是 mock、Claude 还是 OpenAI，它只调用统一接口。
+        #
+        # AgentLoopResult:
+        # loop 不只返回文本，还保留了 tool_results 这个扩展位，
+        # 为后面的工具循环、前端展示和审计做准备。
 
-        provider
-        loop 不关心具体是 mock、Claude 还是 OpenAI，它只调用统一接口。
+        current_messages = list(messages)
+        tool_results: list[ToolResult] = []
 
-        AgentLoopResult
-        loop 不只返回文本，还保留了 tool_results 这个扩展位，为后面的工具循环做准备。
-        '''
-        
-        """Run one minimal agent turn."""
-        # 当前阶段：先让 loop 真正接管“调用模型”这一步。
-        # 后续再把这里扩成：
-        # 1. 调模型
-        # 2. 判断是否要调用工具
-        # 3. 执行工具
-        # 4. 把工具结果追加回 messages
-        # 5. 再调模型
-        response = provider.generate(messages=messages, skill=skill)
-        final_text = self._final_text_from_response(response)
-        return AgentLoopResult(final_text=final_text, tool_results=[])
+        for _step in range(settings.max_agent_steps):
+            response = provider.generate(messages=current_messages, skill=skill)
+            if not response.wants_tool:
+                final_text = self._final_text_from_response(response)
+                return AgentLoopResult(
+                    final_text=final_text,
+                    tool_results=tool_results,
+                )
+
+            if response.tool_call is None:
+                return AgentLoopResult(
+                    final_text="Model requested a tool, but no tool call was provided.",
+                    tool_results=tool_results,
+                )
+
+            tool_result = self.tool_executor.execute(
+                tool_name=response.tool_call.name,
+                input_data=response.tool_call.input_data,
+            )
+            tool_results.append(tool_result)
+
+            # 原来的 messages 不动；这里在副本 current_messages 末尾追加 tool 消息。
+            # 下一轮 provider.generate(...) 会看到工具结果，再决定继续调用工具或给最终回答。
+            current_messages.append(
+                {
+                    "role": "tool",
+                    "content": self._format_tool_result(response, tool_result),
+                }
+            )
+
+        return AgentLoopResult(
+            final_text=(
+                "Agent stopped because it reached the maximum number of steps: "
+                f"{settings.max_agent_steps}"
+            ),
+            tool_results=tool_results,
+        )
+
+    def _format_tool_result(
+        self,
+        response: ModelResponse,
+        tool_result: ToolResult,
+    ) -> str:
+        """Format one tool result as a message the model can read."""
+        if response.tool_call is None:
+            return "No tool call was requested."
+
+        return (
+            f"Tool name: {response.tool_call.name}\n"
+            f"Tool input: {response.tool_call.input_data}\n"
+            f"Tool success: {tool_result.ok}\n"
+            f"Tool result:\n{tool_result.content}"
+        )
 
     def _final_text_from_response(self, response: ModelResponse) -> str:
-        """Convert the current structured model response into final text.
-
-        Tool calls are not executed yet. The next step in the tutorial will
-        replace this fallback with real tool execution.
-        """
+        """Convert the current structured model response into final text."""
         if response.text is not None:
             return response.text
         if response.tool_call is not None:
             return (
-                "Model requested a tool call, but tool execution is not wired "
-                f"yet: {response.tool_call.name}"
+                "Model requested another tool call, but the loop did not execute it: "
+                f"{response.tool_call.name}"
             )
         return "Model returned an empty response."

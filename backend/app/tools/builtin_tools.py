@@ -1,3 +1,4 @@
+import json
 import shlex
 import subprocess
 from pathlib import Path
@@ -41,6 +42,8 @@ ALLOWED_COMMANDS = {
     ("node", "--version"),
     ("npm", "--version"),
 }
+TODO_STATE_PATH = ".mini_claude/todos.json"
+TODO_STATUSES = {"pending", "in_progress", "completed"}
 
 
 def _resolve_workspace_path(raw_path: str | None) -> Path:
@@ -109,6 +112,87 @@ def _get_expected_mtime_ns(input_data: dict) -> int | None:
         return int(raw_value)
     except (TypeError, ValueError):
         return None
+
+
+class TodoWriteTool:
+    definition = ToolDefinition(
+        name="todo_write",
+        description="Record or update a short task plan for multi-step agent work.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "description": "Todo items with content and status.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "content": {"type": "string"},
+                            "status": {
+                                "type": "string",
+                                "enum": ["pending", "in_progress", "completed"],
+                            },
+                        },
+                        "required": ["content", "status"],
+                    },
+                }
+            },
+            "required": ["items"],
+        },
+    )
+
+    def invoke(self, input_data: dict) -> ToolResult:
+        items = input_data.get("items")
+        if not isinstance(items, list) or not items:
+            return ToolResult(ok=False, content="input.items must be a non-empty list")
+
+        normalized_items: list[dict[str, str]] = []
+        for index, item in enumerate(items, start=1):
+            if not isinstance(item, dict):
+                return ToolResult(ok=False, content=f"items[{index}] must be an object")
+
+            content = item.get("content")
+            status = item.get("status")
+            if not isinstance(content, str) or not content.strip():
+                return ToolResult(ok=False, content=f"items[{index}].content is required")
+            if status not in TODO_STATUSES:
+                return ToolResult(
+                    ok=False,
+                    content=f"items[{index}].status must be one of: {sorted(TODO_STATUSES)}",
+                )
+
+            normalized_items.append(
+                {
+                    "content": content.strip(),
+                    "status": status,
+                }
+            )
+
+        state_path = _resolve_workspace_path(TODO_STATE_PATH)
+        if not _is_inside_workspace(state_path):
+            return ToolResult(ok=False, content=f"Path is outside workspace: {state_path}")
+
+        try:
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(
+                json.dumps(normalized_items, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            return ToolResult(ok=False, content=str(exc))
+
+        lines = [
+            f"{index}. [{item['status']}] {item['content']}"
+            for index, item in enumerate(normalized_items, start=1)
+        ]
+        return ToolResult(
+            ok=True,
+            content="Updated todo list:\n" + "\n".join(lines),
+            metadata={
+                "path": str(state_path),
+                "count": len(normalized_items),
+            },
+        )
 
 
 class ReadFileTool:
@@ -551,8 +635,9 @@ class RunCommandTool:
 
 
 def build_builtin_tools() -> list:
-    """Return the six core tools from the tutorial as framework placeholders."""
+    """Return the core tools from the tutorial as framework placeholders."""
     return [
+        TodoWriteTool(),
         ReadFileTool(),
         WriteFileTool(),
         EditFileTool(),
@@ -565,6 +650,7 @@ def build_builtin_tools() -> list:
 def build_builtin_tool_factories() -> list:
     """Return lazy tool factories so registry can expose tools before loading them."""
     tool_classes = [
+        TodoWriteTool,
         ReadFileTool,
         WriteFileTool,
         EditFileTool,

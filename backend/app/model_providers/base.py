@@ -39,5 +39,6 @@ class ModelProvider(Protocol):
         *,
         messages: list[dict[str, str]],
         skill: Skill,
+        tools: list[dict] | None = None,
     ) -> ModelResponse:
         """Generate a model response from chat messages."""

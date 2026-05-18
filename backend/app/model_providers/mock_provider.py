@@ -12,7 +12,9 @@ class MockModelProvider:
         *,
         messages: list[dict[str, str]],
         skill: Skill,
+        tools: list[dict] | None = None,
     ) -> ModelResponse:
+        _ = tools
         system_message = messages[0]["content"] if messages else ""
         last_message = messages[-1] if messages else {"role": "", "content": ""}
         if last_message.get("role") == "tool":
@@ -36,6 +38,28 @@ class MockModelProvider:
                 tool_call=ToolCall(
                     name="read_file",
                     input_data={"path": path},
+                )
+            )
+
+        if "mock_tool_todo:" in user_message:
+            payload = user_message.split("mock_tool_todo:", 1)[1].strip()
+            payload = payload.split("\n\n项目知识库片段：", 1)[0]
+            items = []
+            for line in payload.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                status, _, content = line.partition("|")
+                items.append(
+                    {
+                        "status": status.strip(),
+                        "content": content.strip() or "未命名任务",
+                    }
+                )
+            return ModelResponse(
+                tool_call=ToolCall(
+                    name="todo_write",
+                    input_data={"items": items},
                 )
             )
 
